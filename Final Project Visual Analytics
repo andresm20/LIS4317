@@ -1,0 +1,108 @@
+# Install World Development Indicators (WDI) package to access World Bank's global development data
+install.packages("WDI")
+library(WDI)  # World Bank data
+
+install.packages("plotly")
+library(tidyverse)
+library(plotly)
+library(ggplot2)
+
+#1  Ranking Analysis
+
+# Step 1: Define our World Bank indicators for digital development analysis
+indicators <- c(
+  "IT.NET.USER.ZS",  # Tracks percentage of internet users in population
+  "IT.CEL.SETS.P2",  # Measures mobile subscriptions per 100 people
+  "SE.XPD.TOTL.GD.ZS"  # Shows education spending as percentage of GDP
+)
+
+# Step 2: Fetch World Bank data for our analysis period
+wb_data <- WDI(indicator = indicators, start = 2010, end = 2022)    # Get data from 2010-2022
+
+# Step 3: Create ranking visualization of top internet usage countries
+internet_ranking <- wb_data %>%
+  filter(year == 2022) %>%                # Focus on most recent year
+  arrange(desc(IT.NET.USER.ZS)) %>%       # Sort by internet usage (highest to lowest)
+  slice_head(n = 15)                      # Select top 15 countries
+
+# Created an interactive bar plot
+plot_ly(internet_ranking, 
+        x = ~IT.NET.USER.ZS, 
+        y = ~country, 
+        type = 'bar',
+        orientation = 'h') %>%
+  layout(title = 'Top 15 Countries by Internet Usage (2022)',
+         xaxis = list(title = 'Percentage of Population'),
+         yaxis = list(title = 'Country'))
+
+# Create a readable table of top 15 countries
+top_15_table <- internet_ranking %>%
+  select(country, IT.NET.USER.ZS) %>%
+  rename(
+    "Country" = country,
+    "Internet Usage %" = IT.NET.USER.ZS
+  ) %>%
+  arrange(desc(`Internet Usage %`))
+
+# Display the table
+print(top_15_table)
+
+#2 deviation analysis visualization
+
+# Step 1: Create regional classification for key global economies
+country_regions <- data.frame(
+  iso3c = c("USA", "CAN", "GBR", "DEU", "FRA", "JPN", "CHN", "IND"),  # Major economies representing different regions
+  region = c("North America", "North America", "Europe", "Europe", "Europe", "Asia", "Asia", "Asia")
+)
+
+# Step 2: Join regions and calculate deviations
+# This step combines our World Bank data with regional classifications and calculates differences from global average
+
+regional_comparison <- wb_data %>%
+  left_join(country_regions, by = "iso3c") %>%                 # Merge World Bank data with our regional classifications
+  filter(year == 2022) %>%                                     # Focus on most recent year's data
+  group_by(region) %>%                                         # Group countries by their regions
+  summarize(avg_internet = mean(IT.NET.USER.ZS, na.rm = TRUE), # Calculate average internet usage for each region
+            global_avg = mean(wb_data$IT.NET.USER.ZS, na.rm = TRUE)) %>%  # Calculate global average
+  mutate(deviation = avg_internet - global_avg)                # Calculate how far each region deviates from global average
+
+# Step 3: Clean data and create visualization
+# This step removes any missing values and creates a clear visual comparison
+
+regional_comparison_clean <- regional_comparison %>%
+  filter(!is.na(region))                                       # Remove any regions without valid data
+
+# Create final visualization showing regional differences
+
+ggplot(regional_comparison_clean, 
+       aes(x = reorder(region, deviation), y = deviation)) +    # Order regions by their deviation from average
+  geom_bar(stat = "identity",                                   # Create bars for visual comparison
+           aes(fill = deviation > 0)) +                         # Color bars based on positive/negative values
+  coord_flip() +                                               # Make horizontal bars for better readability
+  theme_minimal() +                                            # Use clean, professional theme
+  labs(title = "Internet Usage: How Regions Compare to World Average",    # Clear, informative title
+       subtitle = "Percentage Points Above or Below Global Average",      # Explanatory subtitle
+       x = "Region",                                                      # X-axis label
+       y = "Difference from Global Average (%)") +                        # Y-axis label showing units
+  theme(legend.position = "none")                              # Remove legend for cleaner appearance
+
+#3 Time Series Visualization
+
+# Step 1: Prepare data for time series analysis
+# Calculate average internet usage by year across all countries
+
+time_trends <- wb_data %>%
+  group_by(year) %>%                                    # Group data by year
+  summarize(avg_internet = mean(IT.NET.USER.ZS, na.rm = TRUE))    # Calculate yearly average
+
+# Step 2: Create time series visualization
+
+ggplot(time_trends, aes(x = year, y = avg_internet)) +
+  geom_line(color = "#2E86C1", size = 1.5) +           # Create line with professional appearance
+  geom_point(color = "#2E86C1", size = 3) +            # Add points for clear year markers
+  theme_minimal() +                                     # Use clean theme
+  labs(title = "Global Internet Usage Growth (2010-2022)",
+       x = "Year",
+       y = "Average Internet Usage (% of Population)") +
+  theme(text = element_text(size = 12))                # Set professional text size
+
